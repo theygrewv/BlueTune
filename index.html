@@ -4,45 +4,62 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skyline Audio</title>
-    <script 
-        src="https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js" 
-        crossorigin="anonymous"
-        referrerpolicy="no-referrer">
-    </script>
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
         .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
         button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
-        #debug { background: #000; color: #4ade80; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 5px; min-height: 100px; overflow-y: auto; }
+        #debug { background: #000; color: #4ade80; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 5px; min-height: 120px; overflow-y: auto; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>📻 Skyline Audio</h2>
-        <input type="text" id="handle" placeholder="name.bsky.social">
+        <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
         <button id="startBtn">Connect & Listen</button>
-        <div id="debug">System: Ready.</div>
+        <div id="debug">System: Booting Bridge...</div>
     </div>
 
     <script>
         const debug = document.getElementById('debug');
         const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
 
+        // THE BLOB BYPASS: This fetches the code as data rather than a script
+        async function loadLibrary() {
+            try {
+                log("Fetching bridge data...");
+                const response = await fetch('https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js');
+                const code = await response.text();
+                
+                // Turn the raw code into an internal 'Blob' URL
+                const blob = new Blob([code], { type: 'application/javascript' });
+                const blobURL = URL.createObjectURL(blob);
+                
+                const script = document.createElement('script');
+                script.src = blobURL;
+                script.onload = () => log("BRIDGE ACTIVE (Internal Blob)");
+                document.head.appendChild(script);
+            } catch (e) {
+                log("FETCH FAILED: " + e.message);
+                log("TRY: Open this page in Kiwi with 'CSP Disable' extension ON.");
+            }
+        }
+
+        loadLibrary();
+
         document.getElementById('startBtn').addEventListener('click', async () => {
+            if (typeof atproto === 'undefined') {
+                log("Error: Bridge not yet established.");
+                return;
+            }
+            
             const handle = document.getElementById('handle').value;
             const pass = document.getElementById('app-pw').value;
 
-            // Test if the library actually loaded
-            if (typeof atproto === 'undefined') {
-                log("CRITICAL: Library still blocked by OS. Try disabling 'Hardened' mode in browser settings.");
-                return;
-            }
-
             try {
-                log("Connecting...");
+                log("Authenticating...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 
@@ -50,10 +67,10 @@
                 const { data } = await agent.getTimeline({ limit: 10 });
                 
                 for (const item of data.feed) {
-                    log(`Broadcasting: ${item.post.author.handle}`);
+                    log(`Reading: ${item.post.author.handle}`);
                     const speech = new SpeechSynthesisUtterance(item.post.record.text);
                     window.speechSynthesis.speak(speech);
-                    await new Promise(r => setTimeout(r, 6000));
+                    await new Promise(r => setTimeout(r, 6500));
                 }
             } catch (e) { log("Error: " + e.message); }
         });
