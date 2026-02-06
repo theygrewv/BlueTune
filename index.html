@@ -6,8 +6,6 @@
     <title>BlueTune</title>
     <meta name="theme-color" content="#0f172a">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh https://*.esm.sh; connect-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
@@ -31,7 +29,6 @@
 <body>
     <div class="card">
         <h2 id="appTitle">📻 BlueTune</h2>
-        
         <div id="loginSection">
             <div class="input-group">
                 <input type="text" id="handle" placeholder="yourname.bsky.social">
@@ -102,8 +99,6 @@
         }
         loadEngine();
 
-        document.getElementById('clearLogBtn').addEventListener('click', () => { debug.innerText = "Log Cleared."; });
-
         startBtn.addEventListener('click', async () => {
             const handle = handleInput.value.trim();
             const pass = document.getElementById('app-pw').value.trim();
@@ -138,11 +133,16 @@
             window.speechSynthesis.cancel();
             
             try {
-                log("Scanning Airwaves...");
+                log("Scanning Airwaves (Native)...");
                 const session = agent.session;
+                
+                // NATIVE FETCH to bypass CORS gatekeeping
                 const response = await fetch(`https://bsky.social/xrpc/app.bsky.feed.getTimeline?limit=50`, {
                     headers: { "Authorization": `Bearer ${session.accessJwt}` }
                 });
+                
+                if (!response.ok) throw new Error(`Network response: ${response.status}`);
+                
                 const data = await response.json();
                 let posts = data.feed.map(f => f.post);
 
@@ -170,10 +170,11 @@
                         await new Promise(r => setTimeout(r, 100));
                     }
                 }
-                if (isStreaming) log("End of Feed. Re-tune to refresh.");
                 appTitle.innerHTML = "📻 BlueTune";
             } catch (e) { log("TUNER ERROR: " + e.message); }
         });
+
+        document.getElementById('clearLogBtn').addEventListener('click', () => { debug.innerText = "Log Cleared."; });
     </script>
 </body>
 </html>
