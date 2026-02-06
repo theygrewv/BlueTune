@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh; connect-src 'self' https://bsky.social https://esm.sh; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
@@ -27,98 +27,81 @@
         <div id="loginSection">
             <input type="text" id="handle" placeholder="yourname.bsky.social">
             <input type="password" id="app-pw" placeholder="App Password">
-            <button id="startBtn" class="btn-main" disabled>Scanning Bridge...</button>
+            <button id="startBtn" class="btn-main" disabled>Loading Engine...</button>
             <button id="testBtn" class="btn-test">🔊 Test Audio</button>
         </div>
 
         <div id="tunerSection" class="hidden">
             <label class="control-label">TUNE TO TOPIC:</label>
-            <input type="text" id="topicInput" placeholder="Enter topic (e.g. Science)">
+            <input type="text" id="topicInput" placeholder="Topic (empty for Home)">
             <button id="tuneBtn" class="btn-main">Tune In</button>
             <button id="stopBtn" class="btn-stop">🛑 STOP AUDIO</button>
-            
             <label class="control-label">VOICE SPEED:</label>
             <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
         </div>
         
-        <div id="debug">System: Initializing...</div>
+        <div id="debug">System: Booting...</div>
     </div>
 
-    <script src="library.js"></script>
+    <script type="module">
+        import { BskyAgent } from 'https://esm.sh/@atproto/api@0.13.20';
 
-    <script>
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
         const testBtn = document.getElementById('testBtn');
         const stopBtn = document.getElementById('stopBtn');
         const speedRate = document.getElementById('speedRate');
-        const tunerSection = document.getElementById('tunerSection');
-        const loginSection = document.getElementById('loginSection');
         
         let agent = null;
         let isStreaming = false;
-        let activeLib = null;
 
         const log = (msg) => { 
             debug.innerText += `\n> ${msg}`; 
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // 1. THE DEEP SCAN HEARTBEAT
-        const heartbeat = setInterval(() => {
-            // We search window for anything that looks like the AT Protocol library
-            const bridge = window.atproto || window.atp || window.BskyApi || (window.index && window.index.BskyAgent ? window.index : null);
-            
-            if (bridge) {
-                log("BRIDGE SECURED: Logic detected.");
-                activeLib = bridge;
+        // Initialize
+        try {
+            if (BskyAgent) {
+                log("ENGINE READY.");
                 startBtn.disabled = false;
                 startBtn.innerText = "Log In";
-                clearInterval(heartbeat);
-            } else {
-                // If not found, we try to force-reinject it once
-                if (parseInt(Math.random() * 10) === 5) {
-                    log("Probing memory for library...");
-                }
+                window.BskyAgent = BskyAgent; // Bind to window for backup access
             }
-        }, 800);
+        } catch (e) {
+            log("BOOT ERROR: " + e.message);
+        }
 
-        // 2. AUDIO TEST
+        // AUDIO TEST
         testBtn.addEventListener('click', () => {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("System check. Audio is online.");
+            const utterance = new SpeechSynthesisUtterance("System online.");
             utterance.rate = speedRate.value;
             window.speechSynthesis.speak(utterance);
-            log("Audio Test: Signal Sent.");
         });
 
-        // 3. STOP BUTTON
+        // STOP
         stopBtn.addEventListener('click', () => {
             isStreaming = false;
             window.speechSynthesis.cancel();
             log("STREAM STOPPED.");
         });
 
-        // 4. LOGIN LOGIC
+        // LOGIN
         startBtn.addEventListener('click', async () => {
             const handle = document.getElementById('handle').value.trim();
             const pass = document.getElementById('app-pw').value.trim();
             try {
-                log("Connecting to BlueSky...");
-                // Some versions of the library use different constructors
-                const AgentConstructor = activeLib.BskyAgent || activeLib.AtpAgent;
-                agent = new AgentConstructor({ service: 'https://bsky.social' });
-                
+                log("Connecting to PDS...");
+                agent = new BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
-                log("Logged in successfully!");
-                loginSection.classList.add('hidden');
-                tunerSection.classList.remove('hidden');
-            } catch (e) { 
-                log("LOGIN ERROR: " + e.message); 
-            }
+                log("Connected!");
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('tunerSection').classList.remove('hidden');
+            } catch (e) { log("LOGIN ERROR: " + e.message); }
         });
 
-        // 5. TUNER LOGIC
+        // TUNER
         document.getElementById('tuneBtn').addEventListener('click', async () => {
             const topic = document.getElementById('topicInput').value.trim();
             isStreaming = true;
@@ -127,11 +110,11 @@
             try {
                 let posts;
                 if (topic) {
-                    log(`Tuning into: ${topic}`);
+                    log(`Searching: ${topic}`);
                     const response = await agent.app.bsky.feed.searchPosts({ q: topic, limit: 15 });
                     posts = response.data.posts;
                 } else {
-                    log("Tuning into Home Feed...");
+                    log("Loading Feed...");
                     const response = await agent.getTimeline({ limit: 15 });
                     posts = response.data.feed.map(f => f.post);
                 }
@@ -139,18 +122,14 @@
                 for (const post of posts) {
                     if (!isStreaming) break;
                     log(`Reading: ${post.author.handle}`);
-                    const utterance = new SpeechSynthesisUtterance(`${post.author.handle} says: ${post.record.text}`);
+                    const utterance = new SpeechSynthesisUtterance(`${post.author.handle}: ${post.record.text}`);
                     utterance.rate = speedRate.value;
                     window.speechSynthesis.speak(utterance);
-                    const waitTime = (post.record.text.length * 70) + 2000;
+                    const waitTime = (post.record.text.length * 70) + 2500;
                     await new Promise(r => setTimeout(r, Math.min(waitTime, 10000)));
                 }
             } catch (e) { log("TUNER ERROR: " + e.message); }
         });
-
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=13');
-        }
     </script>
 </body>
 </html>
