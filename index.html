@@ -4,16 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
-        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
+        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        h2 { color: #3b82f6; margin-bottom: 20px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
         button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
         button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
-        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; }
+        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
     </style>
 </head>
 <body>
@@ -21,71 +22,77 @@
         <h2>📻 BlueTune</h2>
         <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn" disabled>Securing Tunnel...</button>
+        <button id="startBtn" disabled>Handshaking...</button>
         <div id="debug">System: Booting...</div>
     </div>
 
-    <script>
+    <script type="module">
+        // Import the library into a private, isolated scope
+        import * as atproto from './library.js';
+
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
-        const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
+        const log = (msg) => { 
+            debug.innerText += `\n> ${msg}`; 
+            debug.scrollTop = debug.scrollHeight; 
+        };
 
-        // THE BINARY BRIDGE: Loads the file as data, then turns it into a script
-        async function loadBinaryLibrary() {
-            try {
-                log("Fetching Binary Library...");
-                const response = await fetch('library.js');
-                const text = await response.text();
-                
-                // We create a 'Blob' which the browser treats as an 'Internal Resource'
-                const blob = new Blob([text], { type: 'application/javascript' });
-                const scriptUrl = URL.createObjectURL(blob);
-                
-                const s = document.createElement('script');
-                s.src = scriptUrl;
-                s.onload = () => {
-                    if (typeof atproto !== 'undefined') {
-                        window.atproto = atproto;
-                        log("BRIDGE SECURED.");
-                        startBtn.disabled = false;
-                        startBtn.innerText = "Tune In";
-                    } else {
-                        log("STRIPPED: Memory wiped by OS.");
-                    }
-                };
-                document.head.appendChild(s);
-            } catch (e) {
-                log("FETCH ERROR: " + e.message);
+        // Initialize the app
+        async function init() {
+            log("Initiating Module Handshake...");
+            
+            // Check if the module import was successful
+            if (atproto && atproto.BskyAgent) {
+                log("BRIDGE SECURED (Scoped Module).");
+                startBtn.disabled = false;
+                startBtn.innerText = "Tune In";
+            } else {
+                log("CRITICAL: Module isolation failed.");
             }
         }
 
+        // Protocol Registration (Service Worker)
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=7').then(() => log("Protocol Active."));
+            navigator.serviceWorker.register('sw.js?v=8').then(() => {
+                log("Protocol Active.");
+            });
         }
 
-        // Run the binary load immediately
-        loadBinaryLibrary();
+        // Run the check
+        init();
 
+        // Login Logic
         startBtn.addEventListener('click', async () => {
-            if (!window.atproto) { log("Error: Tunnel Collapsed."); return; }
+            const handle = document.getElementById('handle').value.trim();
+            const pass = document.getElementById('app-pw').value.trim();
+
+            if (!handle || !pass) {
+                log("ERROR: Credentials missing.");
+                return;
+            }
 
             try {
-                log("Syncing...");
-                const agent = new window.atproto.BskyAgent({ service: 'https://bsky.social' });
-                await agent.login({ 
-                    identifier: document.getElementById('handle').value.trim(), 
-                    password: document.getElementById('app-pw').value.trim() 
-                });
+                log("Connecting via Secure Module...");
+                const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
+                await agent.login({ identifier: handle, password: pass });
                 
-                log("Connected! Audio starting...");
+                log("Success! Audio starting...");
                 const { data } = await agent.getTimeline({ limit: 10 });
+                
                 for (const item of data.feed) {
-                    log(`Reading: ${item.post.author.handle}`);
-                    const speech = new SpeechSynthesisUtterance(item.post.record.text);
+                    const author = item.post.author.handle;
+                    const text = item.post.record.text;
+                    log(`Reading: ${author}`);
+                    
+                    const speech = new SpeechSynthesisUtterance(`${author} says: ${text}`);
+                    speech.rate = 0.95;
                     window.speechSynthesis.speak(speech);
-                    await new Promise(r => setTimeout(r, 8000));
+                    
+                    await new Promise(r => setTimeout(r, 8500));
                 }
-            } catch (e) { log("Error: " + e.message); }
+            } catch (e) {
+                log("CONNECTION ERROR: " + e.message);
+            }
         });
     </script>
 </body>
