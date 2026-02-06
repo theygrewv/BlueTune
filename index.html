@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh; connect-src 'self' https://bsky.social https://*.bsky.social https://esm.sh; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh https://*.esm.sh; connect-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
@@ -26,7 +26,7 @@
         <div id="loginSection">
             <input type="text" id="handle" placeholder="yourname.bsky.social">
             <input type="password" id="app-pw" placeholder="App Password">
-            <button id="startBtn" class="btn-main" disabled>Loading Engine...</button>
+            <button id="startBtn" class="btn-main" disabled>Awaiting Engine...</button>
             <button id="testBtn" class="btn-test">🔊 Test Audio</button>
         </div>
         <div id="tunerSection" class="hidden">
@@ -41,59 +41,97 @@
     </div>
 
     <script type="module">
-        import { BskyAgent } from 'https://esm.sh/@atproto/api@0.13.20';
+        // Log setup
         const debug = document.getElementById('debug');
-        const startBtn = document.getElementById('startBtn');
-        const testBtn = document.getElementById('testBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const speedRate = document.getElementById('speedRate');
-        let agent = null;
-        let isStreaming = false;
-
         const log = (msg) => { 
             debug.innerText += `\n> ${msg}`; 
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        log("ENGINE READY.");
-        startBtn.disabled = false;
-        startBtn.innerText = "Log In";
+        log("Loading Engine from ESM...");
 
-        testBtn.addEventListener('click', () => {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("System online.");
-            utterance.rate = speedRate.value;
-            window.speechSynthesis.speak(utterance);
-        });
-
-        stopBtn.addEventListener('click', () => {
-            isStreaming = false;
-            window.speechSynthesis.cancel();
-            log("STREAM STOPPED.");
-        });
-
-        startBtn.addEventListener('click', async () => {
-            const handle = document.getElementById('handle').value.trim();
-            const pass = document.getElementById('app-pw').value.trim();
-            try {
-                log("Connecting...");
-                // Force the agent to use the browser's native fetch
-                agent = new BskyAgent({ service: 'https://bsky.social' });
-                await agent.login({ identifier: handle, password: pass });
-                log("Connected!");
-                document.getElementById('loginSection').classList.add('hidden');
-                document.getElementById('tunerSection').classList.remove('hidden');
-            } catch (e) { log("LOGIN ERROR: " + e.message); }
-        });
-
-        document.getElementById('tuneBtn').addEventListener('click', async () => {
-            const topic = document.getElementById('topicInput').value.trim().toLowerCase();
-            isStreaming = true;
-            window.speechSynthesis.cancel();
+        // Import with error catching
+        try {
+            const { BskyAgent } = await import('https://esm.sh/@atproto/api@0.13.20');
             
-            try {
-                log("Pulling data...");
-                // Explicitly calling the raw API method to avoid internal library fetch issues
-                const response = await agent.getTimeline({ limit: 40 });
+            const startBtn = document.getElementById('startBtn');
+            const testBtn = document.getElementById('testBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const speedRate = document.getElementById('speedRate');
+            let agent = null;
+            let isStreaming = false;
+
+            log("ENGINE READY.");
+            startBtn.disabled = false;
+            startBtn.innerText = "Log In";
+
+            testBtn.addEventListener('click', () => {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance("System online.");
+                utterance.rate = speedRate.value;
+                window.speechSynthesis.speak(utterance);
+            });
+
+            stopBtn.addEventListener('click', () => {
+                isStreaming = false;
+                window.speechSynthesis.cancel();
+                log("STREAM STOPPED.");
+            });
+
+            startBtn.addEventListener('click', async () => {
+                const handle = document.getElementById('handle').value.trim();
+                const pass = document.getElementById('app-pw').value.trim();
+                try {
+                    log("Connecting...");
+                    agent = new BskyAgent({ service: 'https://bsky.social' });
+                    await agent.login({ identifier: handle, password: pass });
+                    log("Connected!");
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('tunerSection').classList.remove('hidden');
+                } catch (e) { log("LOGIN ERROR: " + e.message); }
+            });
+
+            document.getElementById('tuneBtn').addEventListener('click', async () => {
+                const topic = document.getElementById('topicInput').value.trim().toLowerCase();
+                isStreaming = true;
+                window.speechSynthesis.cancel();
                 
-                if (!response.success) {
+                try {
+                    log("Pulling data...");
+                    const response = await agent.getTimeline({ limit: 40 });
+                    
+                    let posts = response.data.feed.map(f => f.post);
+                    if (topic) {
+                        log(`Filtering for: ${topic}`);
+                        posts = posts.filter(p => p.record.text.toLowerCase().includes(topic));
+                    }
+
+                    if (posts.length === 0) {
+                        log("No matching posts found.");
+                        return;
+                    }
+
+                    log(`Tuning into ${posts.length} posts...`);
+                    for (const post of posts) {
+                        if (!isStreaming) break;
+                        const text = post.record?.text || "";
+                        const author = post.author?.handle || "User";
+                        
+                        log(`Reading: ${author}`);
+                        const utterance = new SpeechSynthesisUtterance(`${author} says: ${text}`);
+                        utterance.rate = speedRate.value;
+                        window.speechSynthesis.speak(utterance);
+                        
+                        const waitTime = (text.length * 75) + 3000;
+                        await new Promise(r => setTimeout(r, Math.min(waitTime, 13000)));
+                    }
+                } catch (e) { log("TUNER ERROR: " + e.message); }
+            });
+
+        } catch (err) {
+            log("CRITICAL BOOT ERROR: " + err.message);
+            console.error(err);
+        }
+    </script>
+</body>
+</html>
