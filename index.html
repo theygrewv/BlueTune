@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh; connect-src 'self' https://bsky.social https://esm.sh; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh; connect-src 'self' https://bsky.social https://*.bsky.social https://esm.sh; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
@@ -60,19 +60,14 @@
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // Initialize
         try {
-            if (BskyAgent) {
-                log("ENGINE READY.");
-                startBtn.disabled = false;
-                startBtn.innerText = "Log In";
-                window.BskyAgent = BskyAgent; // Bind to window for backup access
-            }
+            log("ENGINE READY.");
+            startBtn.disabled = false;
+            startBtn.innerText = "Log In";
         } catch (e) {
             log("BOOT ERROR: " + e.message);
         }
 
-        // AUDIO TEST
         testBtn.addEventListener('click', () => {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance("System online.");
@@ -80,19 +75,17 @@
             window.speechSynthesis.speak(utterance);
         });
 
-        // STOP
         stopBtn.addEventListener('click', () => {
             isStreaming = false;
             window.speechSynthesis.cancel();
             log("STREAM STOPPED.");
         });
 
-        // LOGIN
         startBtn.addEventListener('click', async () => {
             const handle = document.getElementById('handle').value.trim();
             const pass = document.getElementById('app-pw').value.trim();
             try {
-                log("Connecting to PDS...");
+                log("Connecting...");
                 agent = new BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 log("Connected!");
@@ -101,16 +94,16 @@
             } catch (e) { log("LOGIN ERROR: " + e.message); }
         });
 
-        // TUNER
         document.getElementById('tuneBtn').addEventListener('click', async () => {
             const topic = document.getElementById('topicInput').value.trim();
             isStreaming = true;
             window.speechSynthesis.cancel();
             
             try {
-                let posts;
+                let posts = [];
                 if (topic) {
-                    log(`Searching: ${topic}`);
+                    log(`Searching: ${topic}...`);
+                    // Use the specific search endpoint which is more robust
                     const response = await agent.app.bsky.feed.searchPosts({ q: topic, limit: 15 });
                     posts = response.data.posts;
                 } else {
@@ -119,16 +112,31 @@
                     posts = response.data.feed.map(f => f.post);
                 }
 
+                if (!posts || posts.length === 0) {
+                    log("No results found.");
+                    return;
+                }
+
                 for (const post of posts) {
                     if (!isStreaming) break;
-                    log(`Reading: ${post.author.handle}`);
-                    const utterance = new SpeechSynthesisUtterance(`${post.author.handle}: ${post.record.text}`);
-                    utterance.rate = speedRate.value;
-                    window.speechSynthesis.speak(utterance);
-                    const waitTime = (post.record.text.length * 70) + 2500;
-                    await new Promise(r => setTimeout(r, Math.min(waitTime, 10000)));
+                    // Filter out empty posts or weird data
+                    const text = post.record?.text || post.text || "";
+                    const author = post.author?.handle || "Unknown";
+                    
+                    if (text) {
+                        log(`Reading: ${author}`);
+                        const utterance = new SpeechSynthesisUtterance(`${author} says: ${text}`);
+                        utterance.rate = speedRate.value;
+                        window.speechSynthesis.speak(utterance);
+                        
+                        const waitTime = (text.length * 70) + 3000;
+                        await new Promise(r => setTimeout(r, Math.min(waitTime, 12000)));
+                    }
                 }
-            } catch (e) { log("TUNER ERROR: " + e.message); }
+            } catch (e) { 
+                log("TUNER ERROR: " + e.message);
+                console.error(e);
+            }
         });
     </script>
 </body>
