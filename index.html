@@ -80,6 +80,24 @@
             } catch (e) {
                 log("ERROR: " + e.message);
             }
+            if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js?v=2') // Bumped version to v2
+        .then((reg) => {
+            log("Invite Sent: Protocol detected.");
+            
+            // Listen for the specific 'installed' state
+            reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed') {
+                        log("Success: BlueTune is ready to install!");
+                    }
+                });
+            });
+        })
+        .catch(err => log("Invite Failed: " + err.message));
+}
+
         });
     </script>
 </body>
