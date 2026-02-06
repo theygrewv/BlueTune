@@ -1,6 +1,6 @@
 {
-  "name": "Skyline Audio",
-  "short_name": "Skyline",
+  "name": "BlueTune Radio",
+  "short_name": "BlueTune",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#0f172a",
