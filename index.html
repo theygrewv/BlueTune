@@ -9,23 +9,36 @@
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
         .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-        h2 { color: #3b82f6; margin-bottom: 20px; }
+        h2 { color: #3b82f6; margin-bottom: 15px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
         .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
         .btn-test { background: #334155; color: #94a3b8; font-size: 14px; cursor: pointer; border: 1px solid #475569; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
+        .control-label { display: block; text-align: left; font-size: 12px; color: #94a3b8; margin-top: 10px; }
+        range { width: 100%; margin: 10px 0; }
+        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 120px; max-height: 200px; overflow-y: auto; border: 1px solid #334155; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>📻 BlueTune</h2>
-        <input type="text" id="handle" placeholder="yourname.bsky.social">
-        <input type="password" id="app-pw" placeholder="App Password">
         
-        <button id="startBtn" class="btn-main" disabled>Checking Bridge...</button>
-        <button id="testBtn" class="btn-test">🔊 Test Audio</button>
+        <div id="loginSection">
+            <input type="text" id="handle" placeholder="yourname.bsky.social">
+            <input type="password" id="app-pw" placeholder="App Password">
+            <button id="startBtn" class="btn-main" disabled>Checking Bridge...</button>
+            <button id="testBtn" class="btn-test">🔊 Test Audio</button>
+        </div>
+
+        <div id="tunerSection" class="hidden">
+            <label class="control-label">TUNE TO TOPIC:</label>
+            <input type="text" id="topicInput" placeholder="Enter topic (e.g. Science)">
+            <button id="tuneBtn" class="btn-main">Tune In</button>
+            
+            <label class="control-label">VOICE SPEED:</label>
+            <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
+        </div>
         
         <div id="debug">System: Initializing...</div>
     </div>
@@ -36,73 +49,82 @@
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
         const testBtn = document.getElementById('testBtn');
+        const speedRate = document.getElementById('speedRate');
+        const tunerSection = document.getElementById('tunerSection');
+        const loginSection = document.getElementById('loginSection');
         
+        let agent = null;
+        let isStreaming = false;
+
         const log = (msg) => { 
             debug.innerText += `\n> ${msg}`; 
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // AUDIO TEST LOGIC
+        // Audio Test
         testBtn.addEventListener('click', () => {
-            const testMsg = new SpeechSynthesisUtterance("BlueTune audio is functioning correctly.");
-            testMsg.rate = 0.9;
+            const testMsg = new SpeechSynthesisUtterance("Audio check complete.");
+            testMsg.rate = speedRate.value;
             window.speechSynthesis.speak(testMsg);
             log("Audio Test: Signal Sent.");
         });
 
-        // HEARTBEAT LOOP
-        let checkCount = 0;
+        // Bridge Heartbeat
         const heartbeat = setInterval(() => {
-            checkCount++;
             if (typeof atproto !== 'undefined') {
                 log("BRIDGE SECURED.");
                 startBtn.disabled = false;
-                startBtn.innerText = "Tune In";
+                startBtn.innerText = "Log In";
                 clearInterval(heartbeat);
-            } else if (checkCount > 15) {
-                log("WAITING: Optimizing library for Pixel...");
-                checkCount = 0;
             }
         }, 500);
 
-        // Service Worker
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=10').then(() => log("Protocol Active."));
-        }
-
-        // TUNE IN LOGIC
+        // Main Login Logic
         startBtn.addEventListener('click', async () => {
             const handle = document.getElementById('handle').value.trim();
             const pass = document.getElementById('app-pw').value.trim();
-
-            if (!handle || !pass) {
-                log("ERROR: Enter login details.");
-                return;
-            }
-
             try {
-                log("Connecting to BlueSky...");
-                const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
+                log("Connecting...");
+                agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
-                
-                log("Success! Fetching feed...");
-                const { data } = await agent.getTimeline({ limit: 10 });
-                
-                for (const item of data.feed) {
-                    const author = item.post.author.handle;
-                    const text = item.post.record.text;
-                    log(`Reading: ${author}`);
-                    
-                    const speech = new SpeechSynthesisUtterance(`${author} says: ${text}`);
-                    speech.rate = 0.95;
-                    window.speechSynthesis.speak(speech);
-                    
-                    await new Promise(r => setTimeout(r, 8500));
-                }
-            } catch (e) {
-                log("CONNECTION ERROR: " + e.message);
-            }
+                log("Connected!");
+                loginSection.classList.add('hidden');
+                tunerSection.classList.remove('hidden');
+            } catch (e) { log("LOGIN ERROR: " + e.message); }
         });
+
+        // Topic Tuner Logic
+        document.getElementById('tuneBtn').addEventListener('click', async () => {
+            const topic = document.getElementById('topicInput').value.trim();
+            isStreaming = true;
+            window.speechSynthesis.cancel(); // Stop current speech
+            
+            try {
+                let posts;
+                if (topic) {
+                    log(`Tuning into: ${topic}...`);
+                    const response = await agent.app.bsky.feed.searchPosts({ q: topic, limit: 15 });
+                    posts = response.data.posts;
+                } else {
+                    log("Tuning into your Timeline...");
+                    const response = await agent.getTimeline({ limit: 15 });
+                    posts = response.data.feed.map(f => f.post);
+                }
+
+                for (const post of posts) {
+                    if (!isStreaming) break;
+                    log(`Reading: ${post.author.handle}`);
+                    const utterance = new SpeechSynthesisUtterance(`${post.author.handle} says: ${post.record.text}`);
+                    utterance.rate = speedRate.value;
+                    window.speechSynthesis.speak(utterance);
+                    await new Promise(r => setTimeout(r, 9000));
+                }
+            } catch (e) { log("TUNER ERROR: " + e.message); }
+        });
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js?v=11');
+        }
     </script>
 </body>
 </html>
