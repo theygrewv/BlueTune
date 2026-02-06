@@ -48,12 +48,8 @@
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // Load saved handle on startup
         const savedHandle = localStorage.getItem('bt_handle');
-        if (savedHandle) {
-            handleInput.value = savedHandle;
-            log("Loaded saved handle.");
-        }
+        if (savedHandle) { handleInput.value = savedHandle; }
 
         const startBtn = document.getElementById('startBtn');
         const testBtn = document.getElementById('testBtn');
@@ -66,7 +62,7 @@
 
         testBtn.addEventListener('click', () => {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("Audio active.");
+            const utterance = new SpeechSynthesisUtterance("Audio check successful.");
             utterance.rate = speedRate.value;
             window.speechSynthesis.speak(utterance);
         });
@@ -81,9 +77,7 @@
                 log("ENGINE SECURED.");
                 startBtn.disabled = false;
                 startBtn.innerText = "Log In";
-            } catch (err) {
-                log("ENGINE ERROR: " + err.message);
-            }
+            } catch (err) { log("ENGINE ERROR: " + err.message); }
         }
         loadEngine();
 
@@ -93,16 +87,20 @@
             const handle = handleInput.value.trim();
             const pass = document.getElementById('app-pw').value.trim();
             try {
-                log("Connecting via Proxy...");
-                // Save handle for next time
+                log("Connecting Directly...");
                 localStorage.setItem('bt_handle', handle);
                 
-                agent = new BskyAgentClass({ service: PROXY_URL + 'https://bsky.social' });
+                // Login directly to bsky.social (Proxies often fail at auth)
+                agent = new BskyAgentClass({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
+                
                 log("Connected!");
                 document.getElementById('loginSection').classList.add('hidden');
                 document.getElementById('tunerSection').classList.remove('hidden');
-            } catch (e) { log("LOGIN ERROR: " + e.message); }
+            } catch (e) { 
+                log("LOGIN ERROR: " + e.message); 
+                log("Tip: Use an App Password, not your master password.");
+            }
         });
 
         stopBtn.addEventListener('click', () => {
@@ -117,7 +115,10 @@
             window.speechSynthesis.cancel();
             
             try {
-                log("Fetching through tunnel...");
+                log("Fetching Timeline via Proxy...");
+                // Switching the agent to the proxy service ONLY for data retrieval
+                agent.service = new URL(PROXY_URL + 'https://bsky.social');
+                
                 const response = await agent.getTimeline({ limit: 40 });
                 let posts = response.data.feed.map(f => f.post);
 
@@ -126,10 +127,7 @@
                     posts = posts.filter(p => p.record.text.toLowerCase().includes(topic));
                 }
 
-                if (posts.length === 0) {
-                    log("No matching posts found.");
-                    return;
-                }
+                if (posts.length === 0) { log("No matches."); return; }
 
                 log(`Tuning into ${posts.length} posts...`);
                 for (const post of posts) {
@@ -144,6 +142,8 @@
                 }
             } catch (e) { 
                 log("TUNER ERROR: " + e.message);
+                // Switch back to direct in case we need to retry login
+                agent.service = new URL('https://bsky.social');
             }
         });
     </script>
