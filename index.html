@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social https://corsproxy.io; script-src 'self' 'unsafe-inline' https://esm.sh https://*.esm.sh; connect-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social https://corsproxy.io; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh https://*.esm.sh; connect-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
         .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
         h2 { color: #3b82f6; margin-bottom: 15px; }
+        .input-group { position: relative; margin-bottom: 8px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
         .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
@@ -24,11 +25,15 @@
     <div class="card">
         <h2>📻 BlueTune</h2>
         <div id="loginSection">
-            <input type="text" id="handle" placeholder="yourname.bsky.social">
+            <div class="input-group">
+                <input type="text" id="handle" placeholder="yourname.bsky.social">
+                <button id="wipeHandle" class="btn-clear" style="margin:0; padding:5px; position:absolute; right:10px; top:18px; width:auto;">✕</button>
+            </div>
             <input type="password" id="app-pw" placeholder="App Password">
             <button id="startBtn" class="btn-main" disabled>Awaiting Engine...</button>
             <button id="testBtn" class="btn-test">🔊 Test Audio</button>
         </div>
+        
         <div id="tunerSection" class="hidden">
             <input type="text" id="topicInput" placeholder="Filter Keyword (optional)">
             <button id="tuneBtn" class="btn-main">Tune In</button>
@@ -36,6 +41,7 @@
             <label style="display:block; font-size:12px; color:#94a3b8; margin-top:10px;">VOICE SPEED</label>
             <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
         </div>
+        
         <div id="debug">System: Booting...</div>
         <button id="clearLogBtn" class="btn-clear">Clear Debug Log</button>
     </div>
@@ -51,6 +57,12 @@
         const savedHandle = localStorage.getItem('bt_handle');
         if (savedHandle) { handleInput.value = savedHandle; }
 
+        document.getElementById('wipeHandle').addEventListener('click', () => {
+            localStorage.removeItem('bt_handle');
+            handleInput.value = "";
+            log("Handle cleared.");
+        });
+
         const startBtn = document.getElementById('startBtn');
         const testBtn = document.getElementById('testBtn');
         const stopBtn = document.getElementById('stopBtn');
@@ -62,12 +74,10 @@
 
         testBtn.addEventListener('click', () => {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("Audio check successful.");
+            const utterance = new SpeechSynthesisUtterance("Audio active.");
             utterance.rate = speedRate.value;
             window.speechSynthesis.speak(utterance);
         });
-
-        const PROXY_URL = "https://corsproxy.io/?";
 
         async function loadEngine() {
             log("Anchoring engine...");
@@ -89,18 +99,12 @@
             try {
                 log("Connecting Directly...");
                 localStorage.setItem('bt_handle', handle);
-                
-                // Login directly to bsky.social (Proxies often fail at auth)
                 agent = new BskyAgentClass({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
-                
                 log("Connected!");
                 document.getElementById('loginSection').classList.add('hidden');
                 document.getElementById('tunerSection').classList.remove('hidden');
-            } catch (e) { 
-                log("LOGIN ERROR: " + e.message); 
-                log("Tip: Use an App Password, not your master password.");
-            }
+            } catch (e) { log("LOGIN ERROR: " + e.message); }
         });
 
         stopBtn.addEventListener('click', () => {
@@ -115,12 +119,21 @@
             window.speechSynthesis.cancel();
             
             try {
-                log("Fetching Timeline via Proxy...");
-                // Switching the agent to the proxy service ONLY for data retrieval
-                agent.service = new URL(PROXY_URL + 'https://bsky.social');
+                log("Fetching through internal proxy...");
                 
-                const response = await agent.getTimeline({ limit: 40 });
-                let posts = response.data.feed.map(f => f.post);
+                // Using a native fetch with session headers to bypass BskyAgent's potentially blocked fetch wrapper
+                const session = agent.session;
+                const response = await fetch(`https://bsky.social/xrpc/app.bsky.feed.getTimeline?limit=40`, {
+                    headers: {
+                        "Authorization": `Bearer ${session.accessJwt}`,
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+                
+                const data = await response.json();
+                let posts = data.feed.map(f => f.post);
 
                 if (topic) {
                     log(`Filtering for: ${topic}`);
@@ -142,8 +155,7 @@
                 }
             } catch (e) { 
                 log("TUNER ERROR: " + e.message);
-                // Switch back to direct in case we need to retry login
-                agent.service = new URL('https://bsky.social');
+                log("Tip: Ensure you aren't using a VPN or strict tracking blocker.");
             }
         });
     </script>
