@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     
-    <script src="index.min.js"></script>
+    <script src="library.js"></script>
 
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
@@ -35,13 +35,63 @@
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // 1. RELIABLE LIBRARY LOADER (The Manual Handshake)
+        // RELIABLE LIBRARY LOADER
         function checkLibrary() {
             if (typeof atproto !== 'undefined') {
                 log("BlueTune Bridge: ONLINE");
             } else {
-                log("RETRYING: index.min.js not detected yet...");
+                log("RETRYING: library.js not detected yet...");
                 const s = document.createElement('script');
-                // Date.now() forces the browser to ignore any old "missing file" errors
-                s.src = 'index.min.js?v=' + Date.now(); 
-                s.onload = () => log
+                // Updated Line 41: Points to library.js with cache-buster
+                s.src = 'library.js?v=' + Date.now(); 
+                s.onload = () => log("BlueTune Bridge: ONLINE (Manual)");
+                s.onerror = () => log("CRITICAL: library.js still missing from server.");
+                document.head.appendChild(s);
+            }
+        }
+
+        // SERVICE WORKER REGISTRATION
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js?v=4')
+                .then((reg) => {
+                    log("Protocol registered.");
+                    reg.update();
+                    setTimeout(checkLibrary, 1000);
+                })
+                .catch(err => log("Protocol Error: " + err.message));
+        }
+
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            const handle = document.getElementById('handle').value.trim();
+            const pass = document.getElementById('app-pw').value.trim();
+
+            if (typeof atproto === 'undefined') {
+                log("ERROR: Library missing. Logic stripped.");
+                return;
+            }
+
+            try {
+                log("Connecting to BlueSky...");
+                const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
+                await agent.login({ identifier: handle, password: pass });
+                
+                log("Success! Reading your feed...");
+                const { data } = await agent.getTimeline({ limit: 10 });
+                
+                for (const item of data.feed) {
+                    const author = item.post.author.handle;
+                    log(`Now Playing: ${author}`);
+                    
+                    const speech = new SpeechSynthesisUtterance(`${author} says: ${item.post.record.text}`);
+                    speech.rate = 0.95;
+                    window.speechSynthesis.speak(speech);
+                    
+                    await new Promise(r => setTimeout(r, 7000));
+                }
+            } catch (e) {
+                log("CONNECTION ERROR: " + e.message);
+            }
+        });
+    </script>
+</body>
+</html>
