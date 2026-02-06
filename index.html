@@ -4,13 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skyline Audio</title>
-    <script src="atproto-api.js"></script>
+    <script 
+        src="https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js" 
+        crossorigin="anonymous"
+        referrerpolicy="no-referrer">
+    </script>
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
         .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; opacity: 0.5; }
+        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
         #debug { background: #000; color: #4ade80; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 5px; min-height: 100px; overflow-y: auto; }
     </style>
 </head>
@@ -19,40 +23,37 @@
         <h2>📻 Skyline Audio</h2>
         <input type="text" id="handle" placeholder="name.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn" disabled>Loading Bridge...</button>
-        <div id="debug">System: Initializing...</div>
+        <button id="startBtn">Connect & Listen</button>
+        <div id="debug">System: Ready.</div>
     </div>
 
     <script>
         const debug = document.getElementById('debug');
-        const startBtn = document.getElementById('startBtn');
         const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
 
-        // Enable button once the Bridge Loader finishes
-        window.addEventListener('lib-loaded', () => {
-            startBtn.disabled = false;
-            startBtn.style.opacity = "1";
-            startBtn.innerText = "Connect & Listen";
-            log("Bridge Active. Ready to connect.");
-        });
-
-        startBtn.addEventListener('click', async () => {
+        document.getElementById('startBtn').addEventListener('click', async () => {
             const handle = document.getElementById('handle').value;
             const pass = document.getElementById('app-pw').value;
-            
+
+            // Test if the library actually loaded
+            if (typeof atproto === 'undefined') {
+                log("CRITICAL: Library still blocked by OS. Try disabling 'Hardened' mode in browser settings.");
+                return;
+            }
+
             try {
-                log("Authenticating...");
+                log("Connecting...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 
-                log("Success! Reading your feed...");
+                log("Online! Streaming feed...");
                 const { data } = await agent.getTimeline({ limit: 10 });
                 
                 for (const item of data.feed) {
                     log(`Broadcasting: ${item.post.author.handle}`);
-                    const speech = new SpeechSynthesisUtterance(`${item.post.author.handle} says: ${item.post.record.text}`);
+                    const speech = new SpeechSynthesisUtterance(item.post.record.text);
                     window.speechSynthesis.speak(speech);
-                    await new Promise(r => setTimeout(r, 7000));
+                    await new Promise(r => setTimeout(r, 6000));
                 }
             } catch (e) { log("Error: " + e.message); }
         });
