@@ -23,35 +23,30 @@
 <body>
     <div class="card">
         <h2>📻 BlueTune</h2>
-        
         <div id="loginSection">
             <input type="text" id="handle" placeholder="yourname.bsky.social">
             <input type="password" id="app-pw" placeholder="App Password">
             <button id="startBtn" class="btn-main" disabled>Loading Engine...</button>
             <button id="testBtn" class="btn-test">🔊 Test Audio</button>
         </div>
-
         <div id="tunerSection" class="hidden">
-            <label class="control-label">TUNE TO TOPIC:</label>
-            <input type="text" id="topicInput" placeholder="Topic (empty for Home)">
+            <label class="control-label">FILTER TIMELINE BY TOPIC:</label>
+            <input type="text" id="topicInput" placeholder="Keyword (e.g. News)">
             <button id="tuneBtn" class="btn-main">Tune In</button>
             <button id="stopBtn" class="btn-stop">🛑 STOP AUDIO</button>
             <label class="control-label">VOICE SPEED:</label>
             <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
         </div>
-        
         <div id="debug">System: Booting...</div>
     </div>
 
     <script type="module">
         import { BskyAgent } from 'https://esm.sh/@atproto/api@0.13.20';
-
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
         const testBtn = document.getElementById('testBtn');
         const stopBtn = document.getElementById('stopBtn');
         const speedRate = document.getElementById('speedRate');
-        
         let agent = null;
         let isStreaming = false;
 
@@ -60,17 +55,13 @@
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        try {
-            log("ENGINE READY.");
-            startBtn.disabled = false;
-            startBtn.innerText = "Log In";
-        } catch (e) {
-            log("BOOT ERROR: " + e.message);
-        }
+        log("ENGINE READY.");
+        startBtn.disabled = false;
+        startBtn.innerText = "Log In";
 
         testBtn.addEventListener('click', () => {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("System online.");
+            const utterance = new SpeechSynthesisUtterance("System check. Connection is stable.");
             utterance.rate = speedRate.value;
             window.speechSynthesis.speak(utterance);
         });
@@ -95,47 +86,41 @@
         });
 
         document.getElementById('tuneBtn').addEventListener('click', async () => {
-            const topic = document.getElementById('topicInput').value.trim();
+            const topic = document.getElementById('topicInput').value.trim().toLowerCase();
             isStreaming = true;
             window.speechSynthesis.cancel();
             
             try {
-                let posts = [];
+                log("Fetching Timeline...");
+                const response = await agent.getTimeline({ limit: 50 });
+                let posts = response.data.feed.map(f => f.post);
+
                 if (topic) {
-                    log(`Searching: ${topic}...`);
-                    // Use the specific search endpoint which is more robust
-                    const response = await agent.app.bsky.feed.searchPosts({ q: topic, limit: 15 });
-                    posts = response.data.posts;
-                } else {
-                    log("Loading Feed...");
-                    const response = await agent.getTimeline({ limit: 15 });
-                    posts = response.data.feed.map(f => f.post);
+                    log(`Filtering for: "${topic}"...`);
+                    posts = posts.filter(p => p.record.text.toLowerCase().includes(topic));
                 }
 
-                if (!posts || posts.length === 0) {
-                    log("No results found.");
+                if (posts.length === 0) {
+                    log("No matching posts found in recent timeline.");
                     return;
                 }
 
+                log(`Found ${posts.length} posts. Tuning in...`);
                 for (const post of posts) {
                     if (!isStreaming) break;
-                    // Filter out empty posts or weird data
-                    const text = post.record?.text || post.text || "";
+                    const text = post.record?.text || "";
                     const author = post.author?.handle || "Unknown";
                     
-                    if (text) {
-                        log(`Reading: ${author}`);
-                        const utterance = new SpeechSynthesisUtterance(`${author} says: ${text}`);
-                        utterance.rate = speedRate.value;
-                        window.speechSynthesis.speak(utterance);
-                        
-                        const waitTime = (text.length * 70) + 3000;
-                        await new Promise(r => setTimeout(r, Math.min(waitTime, 12000)));
-                    }
+                    log(`Reading: ${author}`);
+                    const utterance = new SpeechSynthesisUtterance(`${author} says: ${text}`);
+                    utterance.rate = speedRate.value;
+                    window.speechSynthesis.speak(utterance);
+                    
+                    const waitTime = (text.length * 70) + 3000;
+                    await new Promise(r => setTimeout(r, Math.min(waitTime, 12000)));
                 }
             } catch (e) { 
                 log("TUNER ERROR: " + e.message);
-                console.error(e);
             }
         });
     </script>
