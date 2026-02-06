@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
     <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh https://*.esm.sh; connect-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
@@ -14,7 +16,8 @@
         .input-group { position: relative; margin-bottom: 8px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
+        .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .btn-main:active { background: #2563eb; }
         .btn-stop { background: #ef4444; color: white; font-weight: bold; cursor: pointer; }
         .btn-skip { background: #475569; color: white; font-weight: bold; cursor: pointer; margin-top: 5px; }
         .btn-test { background: #334155; color: #94a3b8; font-size: 14px; cursor: pointer; border: 1px solid #475569; }
@@ -25,8 +28,7 @@
         .on-air { width: 12px; height: 12px; background: #ef4444; border-radius: 50%; display: inline-block; margin-right: 8px; box-shadow: 0 0 8px #ef4444; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
         #trendingBox { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 15px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
-        .tag { background: #334155; color: #3b82f6; padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; font-weight: bold; transition: 0.2s; border: 1px solid transparent; }
-        .tag:hover { border-color: #3b82f6; background: #1e293b; }
+        .tag { background: #334155; color: #3b82f6; padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -44,173 +46,24 @@
         </div>
         
         <div id="tunerSection" class="hidden">
-            <input type="text" id="topicInput" placeholder="Filter or Search Keyword">
-            
+            <input type="text" id="topicInput" placeholder="Filter or Search">
             <div id="trendingWrapper">
                 <label style="display:block; font-size:11px; color:#94a3b8; text-align:left; margin-bottom:5px;">POPULAR AIRWAVES:</label>
-                <div id="trendingBox">
-                    <span class="tag">Loading trends...</span>
-                </div>
+                <div id="trendingBox"><span class="tag">Syncing tags...</span></div>
             </div>
-
             <button id="tuneBtn" class="btn-main">Tune In</button>
             <button id="skipBtn" class="btn-skip">⏭️ Skip Post</button>
             <button id="stopBtn" class="btn-stop">🛑 Stop Audio</button>
             <button id="shareBtn" class="btn-share">🔗 Share Radio</button>
-
             <label style="display:block; font-size:12px; color:#94a3b8; margin-top:10px;">VOICE SPEED</label>
             <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
         </div>
         
-        <div id="debug">System: Initializing...</div>
+        <div id="debug">System: Booting...</div>
         <button id="clearLogBtn" class="btn-clear">Clear Debug Log</button>
     </div>
 
     <script type="module">
-        import { BskyAgent } from 'https://esm.sh/@atproto/api@0.13.20';
-
         const debug = document.getElementById('debug');
         const log = (msg) => { 
-            debug.innerText += `\n> ${msg}`; 
-            debug.scrollTop = debug.scrollHeight; 
-        };
-
-        const handleInput = document.getElementById('handle');
-        const startBtn = document.getElementById('startBtn');
-        const testBtn = document.getElementById('testBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const skipBtn = document.getElementById('skipBtn');
-        const shareBtn = document.getElementById('shareBtn');
-        const speedRate = document.getElementById('speedRate');
-        const appTitle = document.getElementById('appTitle');
-        const trendingBox = document.getElementById('trendingBox');
-        
-        let agent = null;
-        let isStreaming = false;
-        let skipRequested = false;
-
-        const savedHandle = localStorage.getItem('bt_handle');
-        if (savedHandle) { handleInput.value = savedHandle; }
-
-        document.getElementById('wipeHandle').addEventListener('click', () => {
-            localStorage.removeItem('bt_handle');
-            handleInput.value = "";
-            log("Handle cleared.");
-        });
-
-        log("ENGINE SECURED.");
-        startBtn.disabled = false;
-        startBtn.innerText = "Log In";
-
-        testBtn.addEventListener('click', () => {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("Audio check successful.");
-            utterance.rate = speedRate.value;
-            window.speechSynthesis.speak(utterance);
-        });
-
-        startBtn.addEventListener('click', async () => {
-            const handle = handleInput.value.trim();
-            const pass = document.getElementById('app-pw').value.trim();
-            try {
-                log("Connecting...");
-                localStorage.setItem('bt_handle', handle);
-                agent = new BskyAgent({ service: 'https://bsky.social' });
-                await agent.login({ identifier: handle, password: pass });
-                log("Connected!");
-                document.getElementById('loginSection').classList.add('hidden');
-                document.getElementById('tunerSection').classList.remove('hidden');
-                loadTrending();
-            } catch (e) { log("LOGIN ERROR: " + e.message); }
-        });
-
-        async function loadTrending() {
-            try {
-                // Using the search endpoint to find tags that are actually being discussed
-                const response = await fetch(`https://bsky.social/xrpc/app.bsky.unspecced.getTrendingTopics`, {
-                    headers: { "Authorization": `Bearer ${agent.session.accessJwt}` }
-                });
-                const data = await response.json();
-                if (data.topics) {
-                    trendingBox.innerHTML = '';
-                    // Only show topics that are plain text (easier for TTS)
-                    data.topics.filter(t => !t.topic.includes('http')).slice(0, 6).forEach(topic => {
-                        const span = document.createElement('span');
-                        span.className = 'tag';
-                        span.innerText = topic.topic.replace('#', '');
-                        span.onclick = () => {
-                            document.getElementById('topicInput').value = span.innerText;
-                            document.getElementById('tuneBtn').click();
-                        };
-                        trendingBox.appendChild(span);
-                    });
-                }
-            } catch (e) { trendingBox.innerHTML = '<span class="tag">#news</span><span class="tag">#tech</span>'; }
-        }
-
-        stopBtn.addEventListener('click', () => {
-            isStreaming = false;
-            window.speechSynthesis.cancel();
-            appTitle.innerHTML = "📻 BlueTune";
-            log("STREAM STOPPED.");
-        });
-
-        skipBtn.addEventListener('click', () => {
-            skipRequested = true;
-            window.speechSynthesis.cancel();
-            log("Skipping...");
-        });
-
-        shareBtn.addEventListener('click', async () => {
-            try {
-                await navigator.share({ title: 'BlueTune', text: 'Listen to BlueSky!', url: window.location.href });
-            } catch (err) { log("Share closed."); }
-        });
-
-        document.getElementById('tuneBtn').addEventListener('click', async () => {
-            const query = document.getElementById('topicInput').value.trim();
-            isStreaming = true;
-            appTitle.innerHTML = '<span class="on-air"></span>📻 ON AIR';
-            window.speechSynthesis.cancel();
-            
-            try {
-                let posts = [];
-                if (query) {
-                    log(`Searching BlueSky for: "${query}"...`);
-                    // GLOBAL SEARCH - This is the key change!
-                    const response = await fetch(`https://bsky.social/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(query)}&limit=25`, {
-                        headers: { "Authorization": `Bearer ${agent.session.accessJwt}` }
-                    });
-                    const data = await response.json();
-                    posts = data.posts || [];
-                } else {
-                    log("Tuning into Home Feed...");
-                    const response = await fetch(`https://bsky.social/xrpc/app.bsky.feed.getTimeline?limit=40`, {
-                        headers: { "Authorization": `Bearer ${agent.session.accessJwt}` }
-                    });
-                    const data = await response.json();
-                    posts = data.feed.map(f => f.post);
-                }
-
-                if (posts.length === 0) {
-                    log("No active airwaves found for this topic.");
-                    appTitle.innerHTML = "📻 BlueTune";
-                    return;
-                }
-
-                log(`Playing ${posts.length} stations...`);
-                for (const post of posts) {
-                    if (!isStreaming) break;
-                    skipRequested = false;
-                    const text = (post.record?.text || post.text || "").replace(/(https?:\/\/[^\s]+)/g, "link");
-                    const author = post.author?.displayName || post.author?.handle || "Unknown";
-                    
-                    log(`Now Playing: ${author}`);
-                    const utterance = new SpeechSynthesisUtterance(`${author} says: ${text}`);
-                    utterance.rate = speedRate.value;
-                    window.speechSynthesis.speak(utterance);
-                    
-                    const waitTime = (text.length * 80) + 3000;
-                    const startTime = Date.now();
-                    while (Date.now() - startTime < Math.min(waitTime, 15000)) {
-                        if (skipRequested ||
+            debug.innerText += `\n> ${msg}`;
