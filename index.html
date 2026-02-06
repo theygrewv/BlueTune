@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skyline Audio</title>
-    <script src="atproto.js"></script>
+    <link rel="manifest" href="manifest.json">
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
+        body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
         .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
@@ -17,44 +17,48 @@
 <body>
     <div class="card">
         <h2>📻 Skyline Audio</h2>
-        <input type="text" id="handle" placeholder="yourname.bsky.social">
+        <input type="text" id="handle" placeholder="name.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
         <button id="startBtn">Connect & Listen</button>
-        <div id="debug">System: Initializing Bridge...</div>
+        <div id="debug">System: Registering Security Layer...</div>
     </div>
 
     <script>
         const debug = document.getElementById('debug');
         const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
 
-        // Start the bridge from the local file
-        if (window.atprotoBridge) {
-            window.atprotoBridge.init()
-                .then(() => log("Bridge Ready. System Online."))
-                .catch(() => log("CRITICAL: Bridge Blocked. Try Kiwi/Firefox."));
+        // STEP 1: Register Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => {
+                log("Security Layer Active.");
+                loadLibrary();
+            });
+        }
+
+        // STEP 2: Load Library via Proxy
+        function loadLibrary() {
+            const script = document.createElement('script');
+            script.src = "https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js";
+            script.onload = () => log("BRIDGE ESTABLISHED.");
+            script.onerror = () => log("FAIL: Bridge Blocked.");
+            document.head.appendChild(script);
         }
 
         document.getElementById('startBtn').addEventListener('click', async () => {
             if (typeof atproto === 'undefined') {
-                log("Error: ATProto object missing.");
+                log("Error: Logic missing.");
                 return;
             }
-
-            const handle = document.getElementById('handle').value;
-            const pass = document.getElementById('app-pw').value;
-
             try {
-                log("Connecting to BlueSky...");
+                log("Connecting...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
-                await agent.login({ identifier: handle, password: pass });
+                await agent.login({ identifier: document.getElementById('handle').value, password: document.getElementById('app-pw').value });
                 
-                log("Broadcasting Feed...");
+                log("Online! Streaming...");
                 const { data } = await agent.getTimeline({ limit: 10 });
-                
                 for (const item of data.feed) {
-                    log(`Now Playing: ${item.post.author.handle}`);
-                    const speech = new SpeechSynthesisUtterance(`${item.post.author.handle} says: ${item.post.record.text}`);
-                    speech.rate = 0.9;
+                    log(`Broadcasting: ${item.post.author.handle}`);
+                    const speech = new SpeechSynthesisUtterance(item.post.record.text);
                     window.speechSynthesis.speak(speech);
                     await new Promise(r => setTimeout(r, 7000));
                 }
