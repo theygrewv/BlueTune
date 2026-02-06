@@ -15,6 +15,7 @@
         .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
         .btn-stop { background: #ef4444; color: white; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .btn-test { background: #334155; color: #94a3b8; font-size: 14px; cursor: pointer; border: 1px solid #475569; }
+        .btn-clear { background: transparent; color: #64748b; font-size: 11px; text-decoration: underline; cursor: pointer; margin-top: 10px; border: none; }
         .control-label { display: block; text-align: left; font-size: 12px; color: #94a3b8; margin-top: 10px; }
         #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
         .hidden { display: none; }
@@ -32,106 +33,3 @@
         <div id="tunerSection" class="hidden">
             <label class="control-label">FILTER BY KEYWORD:</label>
             <input type="text" id="topicInput" placeholder="Keyword (optional)">
-            <button id="tuneBtn" class="btn-main">Tune In</button>
-            <button id="stopBtn" class="btn-stop">🛑 STOP AUDIO</button>
-            <label class="control-label">VOICE SPEED:</label>
-            <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
-        </div>
-        <div id="debug">System: Booting...</div>
-    </div>
-
-    <script type="module">
-        // Log setup
-        const debug = document.getElementById('debug');
-        const log = (msg) => { 
-            debug.innerText += `\n> ${msg}`; 
-            debug.scrollTop = debug.scrollHeight; 
-        };
-
-        log("Loading Engine from ESM...");
-
-        // Import with error catching
-        try {
-            const { BskyAgent } = await import('https://esm.sh/@atproto/api@0.13.20');
-            
-            const startBtn = document.getElementById('startBtn');
-            const testBtn = document.getElementById('testBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            const speedRate = document.getElementById('speedRate');
-            let agent = null;
-            let isStreaming = false;
-
-            log("ENGINE READY.");
-            startBtn.disabled = false;
-            startBtn.innerText = "Log In";
-
-            testBtn.addEventListener('click', () => {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance("System online.");
-                utterance.rate = speedRate.value;
-                window.speechSynthesis.speak(utterance);
-            });
-
-            stopBtn.addEventListener('click', () => {
-                isStreaming = false;
-                window.speechSynthesis.cancel();
-                log("STREAM STOPPED.");
-            });
-
-            startBtn.addEventListener('click', async () => {
-                const handle = document.getElementById('handle').value.trim();
-                const pass = document.getElementById('app-pw').value.trim();
-                try {
-                    log("Connecting...");
-                    agent = new BskyAgent({ service: 'https://bsky.social' });
-                    await agent.login({ identifier: handle, password: pass });
-                    log("Connected!");
-                    document.getElementById('loginSection').classList.add('hidden');
-                    document.getElementById('tunerSection').classList.remove('hidden');
-                } catch (e) { log("LOGIN ERROR: " + e.message); }
-            });
-
-            document.getElementById('tuneBtn').addEventListener('click', async () => {
-                const topic = document.getElementById('topicInput').value.trim().toLowerCase();
-                isStreaming = true;
-                window.speechSynthesis.cancel();
-                
-                try {
-                    log("Pulling data...");
-                    const response = await agent.getTimeline({ limit: 40 });
-                    
-                    let posts = response.data.feed.map(f => f.post);
-                    if (topic) {
-                        log(`Filtering for: ${topic}`);
-                        posts = posts.filter(p => p.record.text.toLowerCase().includes(topic));
-                    }
-
-                    if (posts.length === 0) {
-                        log("No matching posts found.");
-                        return;
-                    }
-
-                    log(`Tuning into ${posts.length} posts...`);
-                    for (const post of posts) {
-                        if (!isStreaming) break;
-                        const text = post.record?.text || "";
-                        const author = post.author?.handle || "User";
-                        
-                        log(`Reading: ${author}`);
-                        const utterance = new SpeechSynthesisUtterance(`${author} says: ${text}`);
-                        utterance.rate = speedRate.value;
-                        window.speechSynthesis.speak(utterance);
-                        
-                        const waitTime = (text.length * 75) + 3000;
-                        await new Promise(r => setTimeout(r, Math.min(waitTime, 13000)));
-                    }
-                } catch (e) { log("TUNER ERROR: " + e.message); }
-            });
-
-        } catch (err) {
-            log("CRITICAL BOOT ERROR: " + err.message);
-            console.error(err);
-        }
-    </script>
-</body>
-</html>
