@@ -6,13 +6,11 @@
     <title>BlueTune</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
-    
     <script src="index.min.js"></script>
-
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
-        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-        h2 { color: #3b82f6; margin-bottom: 20px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
+        h2 { color: #3b82f6; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
         button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
@@ -25,7 +23,7 @@
         <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
         <button id="startBtn">Tune In</button>
-        <div id="debug">System: Initializing BlueTune...</div>
+        <div id="debug">System: Initializing...</div>
     </div>
 
     <script>
@@ -35,11 +33,22 @@
             debug.scrollTop = debug.scrollHeight; 
         };
 
+        // SERVICE WORKER REGISTRATION (Your Security Protocol)
+        if ('serviceWorker' in navigator) {
+            // The ?v=1 acts as a "cache-buster" to force the browser to update
+            navigator.serviceWorker.register('sw.js?v=1')
+                .then((reg) => {
+                    log("Protocol registered.");
+                    reg.update(); // Forces update check
+                })
+                .catch(err => log("Registration Failed: " + err.message));
+        }
+
         window.onload = () => {
             if (typeof atproto !== 'undefined') {
                 log("BlueTune Bridge: ONLINE");
             } else {
-                log("ERROR: index.min.js missing from repo.");
+                log("ERROR: index.min.js missing.");
             }
         };
 
@@ -47,32 +56,29 @@
             const handle = document.getElementById('handle').value.trim();
             const pass = document.getElementById('app-pw').value.trim();
 
-            if (!window.atproto) {
-                log("ERROR: Logic stripped. Re-install PWA.");
+            if (typeof atproto === 'undefined') {
+                log("ERROR: Library missing.");
                 return;
             }
 
             try {
-                log("Authenticating with BlueSky...");
+                log("Connecting to BlueSky...");
+                // Browser-ready version of the 'AtpAgent' command
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 
-                log("Success! Streaming your feed...");
+                log("Success! Reading your feed...");
                 const { data } = await agent.getTimeline({ limit: 10 });
                 
                 for (const item of data.feed) {
-                    const text = item.post.record.text;
-                    const author = item.post.author.handle;
-                    log(`Now Playing: ${author}`);
-                    
-                    const speech = new SpeechSynthesisUtterance(`${author} says: ${text}`);
-                    speech.rate = 0.9;
-                    window.speechSynthesis.speak(speech);
-                    
+                    log(`Now Playing: ${item.post.author.handle}`);
+                    const utterance = new SpeechSynthesisUtterance(item.post.record.text);
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
                     await new Promise(r => setTimeout(r, 7000));
                 }
             } catch (e) {
-                log("CONNECTION ERROR: " + e.message);
+                log("ERROR: " + e.message);
             }
         });
     </script>

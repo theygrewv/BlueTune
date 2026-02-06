@@ -1,17 +1,23 @@
-const CACHE_NAME = 'skyline-v1';
+const CACHE_NAME = 'bluetune-cache-v1';
+// This version uses relative paths (./) to find your files regardless of the URL
 const ASSETS = [
+  './',
   'index.html',
-  'https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js'
+  'index.min.js',
+  'manifest.json'
 ];
 
-// Install and cache the library
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) => {
+      // Adding assets one by one so one failure doesn't break the whole thing
+      return Promise.allSettled(
+        ASSETS.map(asset => cache.add(asset))
+      );
+    })
   );
 });
 
-// Intercept requests to make them "Internal"
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((response) => {
