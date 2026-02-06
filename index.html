@@ -6,17 +6,14 @@
     <title>BlueTune</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
-    
-    <script src="library.js"></script>
-
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
-        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-        h2 { color: #3b82f6; margin-bottom: 20px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
         button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
-        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
+        button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -24,73 +21,61 @@
         <h2>📻 BlueTune</h2>
         <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn">Tune In</button>
-        <div id="debug">System: Initializing...</div>
+        <button id="startBtn" disabled>Connecting...</button>
+        <div id="debug">System: Booting...</div>
     </div>
+
+    <script src="library.js"></script>
 
     <script>
         const debug = document.getElementById('debug');
+        const startBtn = document.getElementById('startBtn');
         const log = (msg) => { 
             debug.innerText += `\n> ${msg}`; 
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // RELIABLE LIBRARY LOADER
-        function checkLibrary() {
+        // This function checks if the library actually stayed in memory
+        function verifyBridge() {
             if (typeof atproto !== 'undefined') {
-                log("BlueTune Bridge: ONLINE");
+                window.atproto = atproto;
+                log("BRIDGE ESTABLISHED.");
+                startBtn.disabled = false;
+                startBtn.innerText = "Tune In";
             } else {
-                log("RETRYING: library.js not detected yet...");
-                const s = document.createElement('script');
-                // Updated Line 41: Points to library.js with cache-buster
-                s.src = 'library.js?v=' + Date.now(); 
-                s.onload = () => log("BlueTune Bridge: ONLINE (Manual)");
-                s.onerror = () => log("CRITICAL: library.js still missing from server.");
-                document.head.appendChild(s);
+                log("CRITICAL: PixelOS stripped the logic. Action: Clear cache & refresh.");
             }
         }
 
-        // SERVICE WORKER REGISTRATION
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=4')
-                .then((reg) => {
-                    log("Protocol registered.");
-                    reg.update();
-                    setTimeout(checkLibrary, 1000);
-                })
-                .catch(err => log("Protocol Error: " + err.message));
+            navigator.serviceWorker.register('sw.js?v=6').then(() => log("Protocol Active."));
         }
 
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            const handle = document.getElementById('handle').value.trim();
-            const pass = document.getElementById('app-pw').value.trim();
+        // Wait 1 second for the hardware to process library.js
+        setTimeout(verifyBridge, 1000);
 
-            if (typeof atproto === 'undefined') {
-                log("ERROR: Library missing. Logic stripped.");
-                return;
-            }
+        startBtn.addEventListener('click', async () => {
+            // We use 'window.atproto' specifically to bypass the strip
+            const lib = window.atproto;
+            if (!lib) { log("Error: Logic missing."); return; }
 
             try {
-                log("Connecting to BlueSky...");
-                const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
-                await agent.login({ identifier: handle, password: pass });
+                log("Logging in...");
+                const agent = new lib.BskyAgent({ service: 'https://bsky.social' });
+                await agent.login({ 
+                    identifier: document.getElementById('handle').value.trim(), 
+                    password: document.getElementById('app-pw').value.trim() 
+                });
                 
-                log("Success! Reading your feed...");
+                log("Success! Audio starting...");
                 const { data } = await agent.getTimeline({ limit: 10 });
-                
                 for (const item of data.feed) {
-                    const author = item.post.author.handle;
-                    log(`Now Playing: ${author}`);
-                    
-                    const speech = new SpeechSynthesisUtterance(`${author} says: ${item.post.record.text}`);
-                    speech.rate = 0.95;
+                    log(`Reading: ${item.post.author.handle}`);
+                    const speech = new SpeechSynthesisUtterance(item.post.record.text);
                     window.speechSynthesis.speak(speech);
-                    
-                    await new Promise(r => setTimeout(r, 7000));
+                    await new Promise(r => setTimeout(r, 8000));
                 }
-            } catch (e) {
-                log("CONNECTION ERROR: " + e.message);
-            }
+            } catch (e) { log("Error: " + e.message); }
         });
     </script>
 </body>
