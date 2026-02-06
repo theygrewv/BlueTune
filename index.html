@@ -5,40 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
     <meta name="theme-color" content="#0f172a">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; script-src 'self' 'unsafe-inline' https://esm.sh https://*.esm.sh; connect-src 'self' https://esm.sh https://*.esm.sh https://bsky.social https://*.bsky.social; img-src 'self' data: https://*.bsky.social; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; margin: 0; }
-        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: 20px auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
         h2 { color: #3b82f6; margin-bottom: 15px; }
         .input-group { position: relative; margin-bottom: 8px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-        .btn-main:active { background: #2563eb; }
+        .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
         .btn-stop { background: #ef4444; color: white; font-weight: bold; cursor: pointer; }
         .btn-skip { background: #475569; color: white; font-weight: bold; cursor: pointer; margin-top: 5px; }
         .btn-test { background: #334155; color: #94a3b8; font-size: 14px; cursor: pointer; border: 1px solid #475569; }
         .btn-clear { background: transparent; color: #64748b; font-size: 11px; text-decoration: underline; cursor: pointer; margin-top: 10px; border: none; }
-        .btn-share { background: #10b981; color: white; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 100px; max-height: 150px; overflow-y: auto; border: 1px solid #334155; }
+        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
         .hidden { display: none; }
         .on-air { width: 12px; height: 12px; background: #ef4444; border-radius: 50%; display: inline-block; margin-right: 8px; box-shadow: 0 0 8px #ef4444; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        #trendingBox { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 15px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
-        .tag { background: #334155; color: #3b82f6; padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2 id="appTitle">📻 BlueTune</h2>
-        
         <div id="loginSection">
-            <div style="position: relative;">
+            <div class="input-group">
                 <input type="text" id="handle" placeholder="yourname.bsky.social">
-                <button id="wipeHandle" class="btn-clear" style="position:absolute; right:10px; top:18px; width:auto; margin:0;">✕</button>
+                <button id="wipeHandle" class="btn-clear" style="margin:0; padding:5px; position:absolute; right:10px; top:18px; width:auto;">✕</button>
             </div>
             <input type="password" id="app-pw" placeholder="App Password">
             <button id="startBtn" class="btn-main" disabled>Anchoring Engine...</button>
@@ -46,24 +39,8 @@
         </div>
         
         <div id="tunerSection" class="hidden">
-            <input type="text" id="topicInput" placeholder="Filter or Search">
-            <div id="trendingWrapper">
-                <label style="display:block; font-size:11px; color:#94a3b8; text-align:left; margin-bottom:5px;">POPULAR AIRWAVES:</label>
-                <div id="trendingBox"><span class="tag">Syncing tags...</span></div>
-            </div>
+            <input type="text" id="topicInput" placeholder="Keyword (Leave empty for ALL)">
             <button id="tuneBtn" class="btn-main">Tune In</button>
             <button id="skipBtn" class="btn-skip">⏭️ Skip Post</button>
             <button id="stopBtn" class="btn-stop">🛑 Stop Audio</button>
-            <button id="shareBtn" class="btn-share">🔗 Share Radio</button>
-            <label style="display:block; font-size:12px; color:#94a3b8; margin-top:10px;">VOICE SPEED</label>
-            <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
-        </div>
-        
-        <div id="debug">System: Booting...</div>
-        <button id="clearLogBtn" class="btn-clear">Clear Debug Log</button>
-    </div>
-
-    <script type="module">
-        const debug = document.getElementById('debug');
-        const log = (msg) => { 
-            debug.innerText += `\n> ${msg}`;
+            <label style="display:block; font-size:12px; color:#94a3b8; margin-top:10px;">VOICE SPEED</
