@@ -1,19 +1,18 @@
-const CACHE_NAME = 'bluetune-v1';
+const CACHE_NAME = 'bluetune-v13';
 
-// The Master Assets List
+// Assets to cache for offline/hardened performance
 const ASSETS = [
   './',
   'index.html',
-  'library.js',
   'manifest.json',
-  'https://cdn-icons-png.flaticon.com/512/3658/3658959.png'
+  'https://esm.sh/@atproto/api@0.13.20'
 ];
 
-// Install Event: Saves everything to your phone's memory
+// Install Event: Saves the app to the phone's internal storage
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Using allSettled so one failed icon doesn't break the whole app
+      // Using allSettled to ensure one failing asset doesn't stop the install
       return Promise.allSettled(
         ASSETS.map(asset => cache.add(asset))
       );
@@ -21,7 +20,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate Event: Cleans up old versions of the app
+// Activate Event: Clears out old versions (v12 and below)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -32,7 +31,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event: Serves the app from memory for speed and security
+// Fetch Event: Serves the app from memory first (fastest)
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((response) => {
