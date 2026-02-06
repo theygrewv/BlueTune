@@ -33,3 +33,121 @@
         <div id="tunerSection" class="hidden">
             <label class="control-label">FILTER BY KEYWORD:</label>
             <input type="text" id="topicInput" placeholder="Keyword (optional)">
+            <button id="tuneBtn" class="btn-main">Tune In</button>
+            <button id="stopBtn" class="btn-stop">🛑 STOP AUDIO</button>
+            <label class="control-label">VOICE SPEED:</label>
+            <input type="range" id="speedRate" min="0.5" max="2" step="0.1" value="1">
+        </div>
+        <div id="debug">System: Booting...</div>
+        <button id="clearLogBtn" class="btn-clear">Clear Debug Log</button>
+    </div>
+
+    <script>
+        const debug = document.getElementById('debug');
+        const log = (msg) => { 
+            debug.innerText += `\n> ${msg}`; 
+            debug.scrollTop = debug.scrollHeight; 
+        };
+
+        document.getElementById('clearLogBtn').addEventListener('click', () => { debug.innerText = "Log Cleared."; });
+
+        const startBtn = document.getElementById('startBtn');
+        const testBtn = document.getElementById('testBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const speedRate = document.getElementById('speedRate');
+        
+        let agent = null;
+        let isStreaming = false;
+        let BskyAgentClass = null;
+
+        // 1. Audio Test works immediately now because it's not blocked by imports
+        testBtn.addEventListener('click', () => {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance("Audio online.");
+            utterance.rate = speedRate.value;
+            window.speechSynthesis.speak(utterance);
+            log("Audio Test: OK.");
+        });
+
+        // 2. Dynamic Engine Loader
+        async function loadEngine() {
+            log("Attempting to anchor engine...");
+            try {
+                const module = await import('https://esm.sh/@atproto/api@0.13.20');
+                BskyAgentClass = module.BskyAgent;
+                log("ENGINE SECURED.");
+                startBtn.disabled = false;
+                startBtn.innerText = "Log In";
+            } catch (err) {
+                log("ENGINE ERROR: " + err.message);
+                log("RETRYING with backup tunnel...");
+                // Fallback for strict browsers
+                const s = document.createElement('script');
+                s.type = 'module';
+                s.innerHTML = `import { BskyAgent } from 'https://esm.sh/@atproto/api@0.13.20'; window.manualAgent = BskyAgent;`;
+                document.head.appendChild(s);
+            }
+        }
+
+        // Check for manual injection every second
+        const bridgeCheck = setInterval(() => {
+            if (window.manualAgent && !BskyAgentClass) {
+                BskyAgentClass = window.manualAgent;
+                log("ENGINE SECURED (Manual).");
+                startBtn.disabled = false;
+                startBtn.innerText = "Log In";
+                clearInterval(bridgeCheck);
+            }
+        }, 1000);
+
+        loadEngine();
+
+        stopBtn.addEventListener('click', () => {
+            isStreaming = false;
+            window.speechSynthesis.cancel();
+            log("STREAM STOPPED.");
+        });
+
+        startBtn.addEventListener('click', async () => {
+            const handle = document.getElementById('handle').value.trim();
+            const pass = document.getElementById('app-pw').value.trim();
+            try {
+                log("Connecting...");
+                agent = new BskyAgentClass({ service: 'https://bsky.social' });
+                await agent.login({ identifier: handle, password: pass });
+                log("Connected!");
+                document.getElementById('loginSection').classList.add('hidden');
+                document.getElementById('tunerSection').classList.remove('hidden');
+            } catch (e) { log("LOGIN ERROR: " + e.message); }
+        });
+
+        document.getElementById('tuneBtn').addEventListener('click', async () => {
+            const topic = document.getElementById('topicInput').value.trim().toLowerCase();
+            isStreaming = true;
+            window.speechSynthesis.cancel();
+            try {
+                log("Fetching timeline data...");
+                const response = await agent.getTimeline({ limit: 40 });
+                let posts = response.data.feed.map(f => f.post);
+                if (topic) {
+                    log(`Filtering for: ${topic}`);
+                    posts = posts.filter(p => p.record.text.toLowerCase().includes(topic));
+                }
+                if (posts.length === 0) { log("No matches."); return; }
+
+                log(`Playing ${posts.length} posts...`);
+                for (const post of posts) {
+                    if (!isStreaming) break;
+                    const text = post.record?.text || "";
+                    log(`Reading: ${post.author.handle}`);
+                    const utterance = new SpeechSynthesisUtterance(`${post.author.handle}: ${text}`);
+                    utterance.rate = speedRate.value;
+                    window.speechSynthesis.speak(utterance);
+                    const waitTime = (text.length * 75) + 3000;
+                    await new Promise(r => setTimeout(r, Math.min(waitTime, 13000)));
+                }
+            } catch (e) { log("TUNER ERROR: " + e.message); }
+        });
+    </script>
+</body>
+</html>
