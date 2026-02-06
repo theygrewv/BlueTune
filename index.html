@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BlueTune</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; connect-src 'self' https://bsky.social; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
@@ -21,53 +21,63 @@
         <h2>📻 BlueTune</h2>
         <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn" disabled>Connecting...</button>
+        <button id="startBtn" disabled>Securing Tunnel...</button>
         <div id="debug">System: Booting...</div>
     </div>
-
-    <script src="library.js"></script>
 
     <script>
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
-        const log = (msg) => { 
-            debug.innerText += `\n> ${msg}`; 
-            debug.scrollTop = debug.scrollHeight; 
-        };
+        const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
 
-        // This function checks if the library actually stayed in memory
-        function verifyBridge() {
-            if (typeof atproto !== 'undefined') {
-                window.atproto = atproto;
-                log("BRIDGE ESTABLISHED.");
-                startBtn.disabled = false;
-                startBtn.innerText = "Tune In";
-            } else {
-                log("CRITICAL: PixelOS stripped the logic. Action: Clear cache & refresh.");
+        // THE BINARY BRIDGE: Loads the file as data, then turns it into a script
+        async function loadBinaryLibrary() {
+            try {
+                log("Fetching Binary Library...");
+                const response = await fetch('library.js');
+                const text = await response.text();
+                
+                // We create a 'Blob' which the browser treats as an 'Internal Resource'
+                const blob = new Blob([text], { type: 'application/javascript' });
+                const scriptUrl = URL.createObjectURL(blob);
+                
+                const s = document.createElement('script');
+                s.src = scriptUrl;
+                s.onload = () => {
+                    if (typeof atproto !== 'undefined') {
+                        window.atproto = atproto;
+                        log("BRIDGE SECURED.");
+                        startBtn.disabled = false;
+                        startBtn.innerText = "Tune In";
+                    } else {
+                        log("STRIPPED: Memory wiped by OS.");
+                    }
+                };
+                document.head.appendChild(s);
+            } catch (e) {
+                log("FETCH ERROR: " + e.message);
             }
         }
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=6').then(() => log("Protocol Active."));
+            navigator.serviceWorker.register('sw.js?v=7').then(() => log("Protocol Active."));
         }
 
-        // Wait 1 second for the hardware to process library.js
-        setTimeout(verifyBridge, 1000);
+        // Run the binary load immediately
+        loadBinaryLibrary();
 
         startBtn.addEventListener('click', async () => {
-            // We use 'window.atproto' specifically to bypass the strip
-            const lib = window.atproto;
-            if (!lib) { log("Error: Logic missing."); return; }
+            if (!window.atproto) { log("Error: Tunnel Collapsed."); return; }
 
             try {
-                log("Logging in...");
-                const agent = new lib.BskyAgent({ service: 'https://bsky.social' });
+                log("Syncing...");
+                const agent = new window.atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ 
                     identifier: document.getElementById('handle').value.trim(), 
                     password: document.getElementById('app-pw').value.trim() 
                 });
                 
-                log("Success! Audio starting...");
+                log("Connected! Audio starting...");
                 const { data } = await agent.getTimeline({ limit: 10 });
                 for (const item of data.feed) {
                     log(`Reading: ${item.post.author.handle}`);
