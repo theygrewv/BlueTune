@@ -12,7 +12,7 @@
         h2 { color: #3b82f6; margin-bottom: 20px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
+        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; transition: 0.3s; }
         button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
         #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
     </style>
@@ -22,14 +22,13 @@
         <h2>📻 BlueTune</h2>
         <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn" disabled>Handshaking...</button>
-        <div id="debug">System: Booting...</div>
+        <button id="startBtn" disabled>Checking Bridge...</button>
+        <div id="debug">System: Initializing...</div>
     </div>
 
-    <script type="module">
-        // Import the library into a private, isolated scope
-        import * as atproto from './library.js';
+    <script src="library.js"></script>
 
+    <script>
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
         const log = (msg) => { 
@@ -37,52 +36,51 @@
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // Initialize the app
-        async function init() {
-            log("Initiating Module Handshake...");
+        // THE HEARTBEAT LOOP
+        // This keeps checking if library.js has finished loading into memory
+        let checkCount = 0;
+        const heartbeat = setInterval(() => {
+            checkCount++;
             
-            // Check if the module import was successful
-            if (atproto && atproto.BskyAgent) {
-                log("BRIDGE SECURED (Scoped Module).");
+            if (typeof atproto !== 'undefined') {
+                log("BRIDGE SECURED.");
                 startBtn.disabled = false;
                 startBtn.innerText = "Tune In";
-            } else {
-                log("CRITICAL: Module isolation failed.");
+                clearInterval(heartbeat); // Stop checking once found
+            } else if (checkCount > 20) {
+                log("STILL WAITING: PixelOS scanning library...");
+                // Reset count to keep the log clean
+                checkCount = 0; 
             }
-        }
+        }, 500);
 
-        // Protocol Registration (Service Worker)
+        // Service Worker Registration
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=8').then(() => {
-                log("Protocol Active.");
-            });
+            navigator.serviceWorker.register('sw.js?v=9').then(() => log("Protocol Active."));
         }
 
-        // Run the check
-        init();
-
-        // Login Logic
+        // Action Logic
         startBtn.addEventListener('click', async () => {
             const handle = document.getElementById('handle').value.trim();
             const pass = document.getElementById('app-pw').value.trim();
 
             if (!handle || !pass) {
-                log("ERROR: Credentials missing.");
+                log("ERROR: Enter login details.");
                 return;
             }
 
             try {
-                log("Connecting via Secure Module...");
+                log("Opening Tunnel to BlueSky...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 
-                log("Success! Audio starting...");
+                log("Connected! Starting audio...");
                 const { data } = await agent.getTimeline({ limit: 10 });
                 
                 for (const item of data.feed) {
                     const author = item.post.author.handle;
                     const text = item.post.record.text;
-                    log(`Reading: ${author}`);
+                    log(`Now Playing: ${author}`);
                     
                     const speech = new SpeechSynthesisUtterance(`${author} says: ${text}`);
                     speech.rate = 0.95;
