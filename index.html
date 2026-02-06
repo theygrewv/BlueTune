@@ -42,10 +42,18 @@
 
     <script>
         const debug = document.getElementById('debug');
+        const handleInput = document.getElementById('handle');
         const log = (msg) => { 
             debug.innerText += `\n> ${msg}`; 
             debug.scrollTop = debug.scrollHeight; 
         };
+
+        // Load saved handle on startup
+        const savedHandle = localStorage.getItem('bt_handle');
+        if (savedHandle) {
+            handleInput.value = savedHandle;
+            log("Loaded saved handle.");
+        }
 
         const startBtn = document.getElementById('startBtn');
         const testBtn = document.getElementById('testBtn');
@@ -56,16 +64,13 @@
         let isStreaming = false;
         let BskyAgentClass = null;
 
-        // Audio Test
         testBtn.addEventListener('click', () => {
             window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance("Audio check successful.");
+            const utterance = new SpeechSynthesisUtterance("Audio active.");
             utterance.rate = speedRate.value;
             window.speechSynthesis.speak(utterance);
         });
 
-        // Proxy Logic
-        // We use a CORS proxy to bypass hardened browser restrictions
         const PROXY_URL = "https://corsproxy.io/?";
 
         async function loadEngine() {
@@ -85,11 +90,13 @@
         document.getElementById('clearLogBtn').addEventListener('click', () => { debug.innerText = "Log Cleared."; });
 
         startBtn.addEventListener('click', async () => {
-            const handle = document.getElementById('handle').value.trim();
+            const handle = handleInput.value.trim();
             const pass = document.getElementById('app-pw').value.trim();
             try {
                 log("Connecting via Proxy...");
-                // Force the agent to use the proxy for all requests
+                // Save handle for next time
+                localStorage.setItem('bt_handle', handle);
+                
                 agent = new BskyAgentClass({ service: PROXY_URL + 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 log("Connected!");
@@ -111,7 +118,6 @@
             
             try {
                 log("Fetching through tunnel...");
-                // Using the manual API call via the proxied agent
                 const response = await agent.getTimeline({ limit: 40 });
                 let posts = response.data.feed.map(f => f.post);
 
@@ -138,7 +144,6 @@
                 }
             } catch (e) { 
                 log("TUNER ERROR: " + e.message);
-                log("Note: If error persists, the proxy may be busy. Try again in 5s.");
             }
         });
     </script>
