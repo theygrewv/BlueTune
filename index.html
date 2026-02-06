@@ -1,19 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://bsky.social https://cdn.jsdelivr.net; img-src 'self' data: https://cdn-icons-png.flaticon.com; style-src 'self' 'unsafe-inline';">
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skyline Audio</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://bsky.social https://cdn.jsdelivr.net; img-src 'self' data: https://cdn-icons-png.flaticon.com; style-src 'self' 'unsafe-inline';">
     <link rel="manifest" href="manifest.json">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/index.min.js"></script>
+
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; text-align: center; padding: 20px; }
-        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
-        input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; }
+        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
-        #debug { background: #000; color: #4ade80; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 120px; overflow-y: auto; }
+        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:active { background: #2563eb; }
+        #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 120px; overflow-y: auto; border: 1px solid #1e293b; }
     </style>
 </head>
 <body>
@@ -22,49 +25,76 @@
         <input type="text" id="handle" placeholder="name.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
         <button id="startBtn">Connect & Listen</button>
-        <div id="debug">System: Registering Security Layer...</div>
+        <div id="debug">System: Initializing Protocol...</div>
     </div>
 
     <script>
         const debug = document.getElementById('debug');
-        const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
+        const log = (msg) => { 
+            const timestamp = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            debug.innerText += `\n[${timestamp}] > ${msg}`; 
+            debug.scrollTop = debug.scrollHeight; 
+        };
 
-        // STEP 1: Register Service Worker
+        // Check if the library is recognized immediately
+        window.addEventListener('load', () => {
+            if (typeof atproto !== 'undefined') {
+                log("BRIDGE ESTABLISHED (v0.13.20)");
+            } else {
+                log("WAITING: Attempting Service Worker Proxy...");
+            }
+        });
+
+        // Register Service Worker for PWA status
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').then(() => {
-                log("Security Layer Active.");
-                loadLibrary();
-            });
-        }
-
-        // STEP 2: Load Library via Proxy
-        function loadLibrary() {
-            const script = document.createElement('script');
-            script.src = "https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js";
-            script.onload = () => log("BRIDGE ESTABLISHED.");
-            script.onerror = () => log("FAIL: Bridge Blocked.");
-            document.head.appendChild(script);
+            navigator.serviceWorker.register('sw.js')
+                .then(() => log("Security Layer: Active"))
+                .catch(err => log("Security Layer Error: " + err.message));
         }
 
         document.getElementById('startBtn').addEventListener('click', async () => {
+            // Check for library again on click
             if (typeof atproto === 'undefined') {
-                log("Error: Logic missing.");
+                log("ERROR: Logic stripped by Browser Hardening.");
+                log("TRY: Install as PWA (Add to Home Screen) and restart.");
                 return;
             }
+
+            const handle = document.getElementById('handle').value.trim();
+            const pass = document.getElementById('app-pw').value.trim();
+
+            if (!handle || !pass) {
+                log("ERROR: Missing Handle or App Password.");
+                return;
+            }
+
             try {
-                log("Connecting...");
+                log("Handshaking with BlueSky...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
-                await agent.login({ identifier: document.getElementById('handle').value, password: document.getElementById('app-pw').value });
+                await agent.login({ identifier: handle, password: pass });
                 
-                log("Online! Streaming...");
+                log("SUCCESS: Reading Feed...");
                 const { data } = await agent.getTimeline({ limit: 10 });
+                
                 for (const item of data.feed) {
-                    log(`Broadcasting: ${item.post.author.handle}`);
-                    const speech = new SpeechSynthesisUtterance(item.post.record.text);
-                    window.speechSynthesis.speak(speech);
+                    const author = item.post.author.handle;
+                    const content = item.post.record.text;
+                    
+                    log(`Broadcasting: ${author}`);
+                    
+                    // Speech Synthesis API
+                    const synth = window.speechSynthesis;
+                    const utterance = new SpeechSynthesisUtterance(`${author} posted: ${content}`);
+                    utterance.rate = 0.95;
+                    utterance.pitch = 1.0;
+                    synth.speak(utterance);
+                    
+                    // Pause between posts
                     await new Promise(r => setTimeout(r, 7000));
                 }
-            } catch (e) { log("Error: " + e.message); }
+            } catch (e) { 
+                log("CONNECTION ERROR: " + e.message); 
+            }
         });
     </script>
 </body>
