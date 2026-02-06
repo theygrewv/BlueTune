@@ -12,8 +12,9 @@
         h2 { color: #3b82f6; margin-bottom: 20px; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        button:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+        .btn-main { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
+        .btn-test { background: #334155; color: #94a3b8; font-size: 14px; cursor: pointer; border: 1px solid #475569; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
         #debug { background: #000; color: #4ade80; padding: 12px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 8px; min-height: 150px; overflow-y: auto; border: 1px solid #334155; }
     </style>
 </head>
@@ -22,7 +23,10 @@
         <h2>📻 BlueTune</h2>
         <input type="text" id="handle" placeholder="yourname.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn" disabled>Checking Bridge...</button>
+        
+        <button id="startBtn" class="btn-main" disabled>Checking Bridge...</button>
+        <button id="testBtn" class="btn-test">🔊 Test Audio</button>
+        
         <div id="debug">System: Initializing...</div>
     </div>
 
@@ -31,35 +35,42 @@
     <script>
         const debug = document.getElementById('debug');
         const startBtn = document.getElementById('startBtn');
+        const testBtn = document.getElementById('testBtn');
+        
         const log = (msg) => { 
             debug.innerText += `\n> ${msg}`; 
             debug.scrollTop = debug.scrollHeight; 
         };
 
-        // THE HEARTBEAT LOOP
-        // This keeps checking if library.js has finished loading into memory
+        // AUDIO TEST LOGIC
+        testBtn.addEventListener('click', () => {
+            const testMsg = new SpeechSynthesisUtterance("BlueTune audio is functioning correctly.");
+            testMsg.rate = 0.9;
+            window.speechSynthesis.speak(testMsg);
+            log("Audio Test: Signal Sent.");
+        });
+
+        // HEARTBEAT LOOP
         let checkCount = 0;
         const heartbeat = setInterval(() => {
             checkCount++;
-            
             if (typeof atproto !== 'undefined') {
                 log("BRIDGE SECURED.");
                 startBtn.disabled = false;
                 startBtn.innerText = "Tune In";
-                clearInterval(heartbeat); // Stop checking once found
-            } else if (checkCount > 20) {
-                log("STILL WAITING: PixelOS scanning library...");
-                // Reset count to keep the log clean
-                checkCount = 0; 
+                clearInterval(heartbeat);
+            } else if (checkCount > 15) {
+                log("WAITING: Optimizing library for Pixel...");
+                checkCount = 0;
             }
         }, 500);
 
-        // Service Worker Registration
+        // Service Worker
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js?v=9').then(() => log("Protocol Active."));
+            navigator.serviceWorker.register('sw.js?v=10').then(() => log("Protocol Active."));
         }
 
-        // Action Logic
+        // TUNE IN LOGIC
         startBtn.addEventListener('click', async () => {
             const handle = document.getElementById('handle').value.trim();
             const pass = document.getElementById('app-pw').value.trim();
@@ -70,17 +81,17 @@
             }
 
             try {
-                log("Opening Tunnel to BlueSky...");
+                log("Connecting to BlueSky...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
                 
-                log("Connected! Starting audio...");
+                log("Success! Fetching feed...");
                 const { data } = await agent.getTimeline({ limit: 10 });
                 
                 for (const item of data.feed) {
                     const author = item.post.author.handle;
                     const text = item.post.record.text;
-                    log(`Now Playing: ${author}`);
+                    log(`Reading: ${author}`);
                     
                     const speech = new SpeechSynthesisUtterance(`${author} says: ${text}`);
                     speech.rate = 0.95;
