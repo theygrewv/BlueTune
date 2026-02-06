@@ -4,65 +4,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skyline Audio</title>
+    <script src="atproto-api.js"></script>
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
-        .card { background: #1e293b; padding: 20px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
+        .card { background: #1e293b; padding: 25px; border-radius: 15px; max-width: 400px; margin: auto; border: 1px solid #334155; }
         input, button { width: 100%; padding: 14px; margin: 8px 0; border-radius: 8px; border: none; font-size: 16px; }
         input { background: #0f172a; color: white; border: 1px solid #334155; }
-        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
+        button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; opacity: 0.5; }
         #debug { background: #000; color: #4ade80; padding: 10px; font-family: monospace; font-size: 11px; margin-top: 20px; text-align: left; border-radius: 5px; min-height: 100px; overflow-y: auto; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>📻 Skyline Audio</h2>
-        <input type="text" id="handle" placeholder="yourname.bsky.social">
+        <input type="text" id="handle" placeholder="name.bsky.social">
         <input type="password" id="app-pw" placeholder="App Password">
-        <button id="startBtn">Connect & Listen</button>
-        <div id="debug">System: Tap Connect to begin...</div>
+        <button id="startBtn" disabled>Loading Bridge...</button>
+        <div id="debug">System: Initializing...</div>
     </div>
 
     <script>
         const debug = document.getElementById('debug');
+        const startBtn = document.getElementById('startBtn');
         const log = (msg) => { debug.innerText += `\n> ${msg}`; debug.scrollTop = debug.scrollHeight; };
 
-        document.getElementById('startBtn').addEventListener('click', async () => {
-            log("Phase 1: Injecting Library...");
-            const script = document.createElement('script');
-            script.src = "https://cdn.jsdelivr.net/npm/@atproto/api@0.13.20/dist/bundle.js";
-            
-            script.onload = async () => {
-                log("Library Loaded! Authenticating...");
-                if ('mediaSession' in navigator) {
-                    navigator.mediaSession.metadata = new MediaMetadata({
-                        title: 'Skyline Audio Feed',
-                        artist: 'BlueSky'
-                    });
-                }
-                await runRadio();
-            };
-
-            script.onerror = () => log("ERROR: Library blocked.");
-            document.head.appendChild(script);
+        // Enable button once the Bridge Loader finishes
+        window.addEventListener('lib-loaded', () => {
+            startBtn.disabled = false;
+            startBtn.style.opacity = "1";
+            startBtn.innerText = "Connect & Listen";
+            log("Bridge Active. Ready to connect.");
         });
 
-        async function runRadio() {
+        startBtn.addEventListener('click', async () => {
             const handle = document.getElementById('handle').value;
             const pass = document.getElementById('app-pw').value;
+            
             try {
+                log("Authenticating...");
                 const agent = new atproto.BskyAgent({ service: 'https://bsky.social' });
                 await agent.login({ identifier: handle, password: pass });
-                log("Logged in! Reading feed...");
-                const { data } = await agent.getTimeline({ limit: 15 });
+                
+                log("Success! Reading your feed...");
+                const { data } = await agent.getTimeline({ limit: 10 });
+                
                 for (const item of data.feed) {
-                    log(`Reading: ${item.post.author.handle}`);
-                    const speech = new SpeechSynthesisUtterance(item.post.record.text);
-                    speech.rate = 0.9;
+                    log(`Broadcasting: ${item.post.author.handle}`);
+                    const speech = new SpeechSynthesisUtterance(`${item.post.author.handle} says: ${item.post.record.text}`);
                     window.speechSynthesis.speak(speech);
-                    await new Promise(r => setTimeout(r, 6000));
+                    await new Promise(r => setTimeout(r, 7000));
                 }
             } catch (e) { log("Error: " + e.message); }
-        }
+        });
     </script>
 </body>
 </html>
